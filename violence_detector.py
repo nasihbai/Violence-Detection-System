@@ -8,6 +8,9 @@ import joblib
 import warnings
 warnings.filterwarnings('ignore')
 
+# YOLO for object detection
+from ultralytics import YOLO
+
 class ViolenceDetector:
     def __init__(self):
         self.model = None
@@ -16,7 +19,10 @@ class ViolenceDetector:
         self.buffer_size = 10
         self.model_path = 'models/violence_model.pkl'
         self.scaler_path = 'models/scaler.pkl'
-        
+
+        # Initialize YOLO model for object detection
+        self.yolo_model = YOLO('yolov8n.pt')  # Using YOLOv8 nano for speed
+
         # Initialize or load model
         self._initialize_model()
     
@@ -540,5 +546,88 @@ class ViolenceDetector:
             'is_violent_video': violence_percentage > 30,  # Consider video violent if >30% frames are violent
             'frame_results': results[-20:] if len(results) > 20 else results  # Return last 20 results
         }
-        
+
         return overall_result
+
+    def detect_objects(self, frame):
+        """Detect persons in frame using YOLO and return detections"""
+        if frame is None:
+            return []
+
+        try:
+            # Run YOLO detection - only detect persons (class 0)
+            results = self.yolo_model(frame, classes=[0], verbose=False)
+
+            detections = []
+            for result in results:
+                boxes = result.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        # Get box coordinates
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                        confidence = float(box.conf[0].cpu().numpy())
+                        class_id = int(box.cls[0].cpu().numpy())
+                        class_name = "Person"  # Always person since we filter for class 0
+
+                        detections.append({
+                            'bbox': (int(x1), int(y1), int(x2), int(y2)),
+                            'confidence': confidence,
+                            'class_id': class_id,
+                            'class_name': class_name
+                        })
+
+            return detections
+        except Exception as e:
+            print(f"Error in YOLO detection: {e}")
+            return []
+
+    def draw_detections(self, frame, detections, is_violent=False, violence_confidence=0.0):
+        """Draw bounding boxes and labels on frame"""
+        if frame is None:
+            return frame
+
+        annotated_frame = frame.copy()
+
+        for det in detections:
+            x1, y1, x2, y2 = det['bbox']
+            confidence = det['confidence']
+            class_name = det['class_name']
+
+            # Color based on violence status (red if violent, green if safe)
+            if is_violent:
+                color = (0, 0, 255)  # Red for violent
+            else:
+                color = (0, 255, 0)  # Green for safe
+
+            # Draw bounding box
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+
+            # Create label with class name and confidence
+            label = f"{class_name}: {confidence:.2f}"
+
+            # Calculate label size and position
+            (label_width, label_height), baseline = cv2.getTextSize(
+                label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2
+            )
+
+            # Draw label background
+            cv2.rectangle(
+                annotated_frame,
+                (x1, y1 - label_height - 10),
+                (x1 + label_width + 5, y1),
+                color,
+                -1
+            )
+
+            # Draw label text
+            cv2.putText(
+                annotated_frame,
+                label,
+                (x1 + 2, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                2
+            )
+
+        return annotated_frame

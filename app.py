@@ -24,40 +24,54 @@ live_detection_results = []
 class VideoCamera:
     def __init__(self):
         self.video = cv2.VideoCapture(0)
-        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        
+        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     def __del__(self):
         self.video.release()
-        
+
     def get_frame(self):
         success, image = self.video.read()
         if not success:
             return None
         return image
-    
+
     def get_frame_with_detection(self):
         frame = self.get_frame()
         if frame is None:
             return None
-            
+
         # Perform violence detection
         is_violent, confidence = detector.detect_violence(frame)
-        
-        # Draw detection results on frame
+
+        # Perform YOLO object detection
+        detections = detector.detect_objects(frame)
+
+        # Draw YOLO bounding boxes on frame
+        frame = detector.draw_detections(frame, detections, is_violent, confidence)
+
+        # Draw violence detection status on frame
         color = (0, 0, 255) if is_violent else (0, 255, 0)
         status = "VIOLENCE DETECTED!" if is_violent else "Safe"
-        
-        cv2.putText(frame, f"Status: {status}", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-        cv2.putText(frame, f"Confidence: {confidence:.2f}", (10, 70), 
+
+        # Draw status background for better visibility
+        cv2.rectangle(frame, (5, 5), (350, 90), (0, 0, 0), -1)
+        cv2.rectangle(frame, (5, 5), (350, 90), color, 2)
+
+        cv2.putText(frame, f"Status: {status}", (15, 35),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        
-        # Add timestamp
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        cv2.putText(frame, timestamp, (10, frame.shape[0] - 10), 
+        cv2.putText(frame, f"Violence Confidence: {confidence:.2f}", (15, 65),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        # Draw person count
+        cv2.putText(frame, f"Persons Detected: {len(detections)}", (15, 85),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
+
+        # Add timestamp at bottom
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(frame, timestamp, (10, frame.shape[0] - 10),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
         # Encode frame to JPEG
         ret, jpeg = cv2.imencode('.jpg', frame)
         return jpeg.tobytes(), is_violent, confidence

@@ -1,5 +1,8 @@
 // Live Detection JavaScript functionality
 
+// Utility functions accessed from main.js via window.violenceDetectionApp
+const utils = window.violenceDetectionApp || {};
+
 let isDetectionActive = false;
 let sessionStartTime = null;
 let sessionTimer = null;
@@ -152,11 +155,7 @@ function initializeChart() {
 // Start detection
 async function startDetection() {
     try {
-        // Request camera permissions
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(track => track.stop()); // We'll use server-side capture
-        
-        // Start server-side detection
+        // Start server-side detection (camera is accessed by server via OpenCV, not browser)
         const response = await fetch('/start_live_detection', {
             method: 'POST',
             headers: {
@@ -183,7 +182,7 @@ async function startDetection() {
         videoFeed.src = '/video_feed';
         
         // Update status
-        updateStatusIndicator(statusIndicator, 'active', 'Active');
+        utils.updateStatusIndicator(statusIndicator, 'active', 'Active');
         
         // Start session timer
         startSessionTimer();
@@ -191,11 +190,11 @@ async function startDetection() {
         // Start polling for results
         startResultsPolling();
         
-        showNotification('Live detection started successfully!', 'success');
+        utils.showNotification('Live detection started successfully!', 'success');
         
     } catch (error) {
         console.error('Error starting detection:', error);
-        showNotification('Failed to start detection. Please check camera permissions.', 'error');
+        utils.showNotification('Failed to start detection. Please check camera permissions.', 'error');
     }
 }
 
@@ -225,7 +224,7 @@ async function stopDetection() {
         videoFeed.src = '';
         
         // Update status
-        updateStatusIndicator(statusIndicator, 'idle', 'Idle');
+        utils.updateStatusIndicator(statusIndicator, 'idle', 'Idle');
         
         // Stop session timer
         stopSessionTimer();
@@ -235,11 +234,11 @@ async function stopDetection() {
         currentStatus.className = 'metric-value safe';
         confidenceValue.textContent = '0%';
         
-        showNotification('Live detection stopped', 'info');
+        utils.showNotification('Live detection stopped', 'info');
         
     } catch (error) {
         console.error('Error stopping detection:', error);
-        showNotification('Error stopping detection', 'error');
+        utils.showNotification('Error stopping detection', 'error');
     }
 }
 
@@ -248,7 +247,7 @@ function startSessionTimer() {
     sessionTimer = setInterval(() => {
         if (sessionStartTime) {
             const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
-            sessionDuration.textContent = formatTime(elapsed);
+            sessionDuration.textContent = utils.formatTime(elapsed);
         }
     }, 1000);
 }
@@ -353,7 +352,7 @@ function addToDetectionLog(result) {
     logItem.className = `log-item ${result.is_violent ? 'danger' : 'safe'}`;
     
     const confidence = Math.round(result.confidence * 100);
-    const timestamp = formatTimestamp(result.timestamp);
+    const timestamp = utils.formatTimestamp(result.timestamp);
     
     logItem.innerHTML = `
         <div class="log-item-icon">
@@ -401,11 +400,8 @@ function updateUIElements() {
     alertOverlay.style.display = 'none';
     
     // Update status indicator
-    updateStatusIndicator(statusIndicator, 'idle', 'Idle');
+    utils.updateStatusIndicator(statusIndicator, 'idle', 'Idle');
 }
-
-// Utility function imports
-const { formatTime, formatTimestamp, updateStatusIndicator, showNotification } = window.violenceDetectionApp;
 
 // Handle page unload
 window.addEventListener('beforeunload', function(e) {
