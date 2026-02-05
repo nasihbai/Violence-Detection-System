@@ -5,11 +5,54 @@ function navigateTo(url) {
     window.location.href = url;
 }
 
+// Theme Management
+function initializeTheme() {
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('theme') || 'light';
+
+    // Apply saved theme
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeButton(savedTheme);
+
+    // Add theme toggle event listener
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeButton(newTheme);
+}
+
+function updateThemeButton(theme) {
+    const themeToggle = document.getElementById('themeToggle');
+    if (!themeToggle) return;
+
+    const icon = themeToggle.querySelector('i');
+    const text = themeToggle.querySelector('span');
+
+    if (theme === 'dark') {
+        icon.className = 'fas fa-sun';
+        text.textContent = 'Light';
+    } else {
+        icon.className = 'fas fa-moon';
+        text.textContent = 'Dark';
+    }
+}
+
 // Smooth scrolling for internal links
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize theme
+    initializeTheme();
+
     // Initialize animations
     initializeAnimations();
-    
+
     // Add click handlers for feature cards
     const featureCards = document.querySelectorAll('.feature-card');
     featureCards.forEach(card => {
@@ -20,19 +63,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
+
     // Add hover effects to tech items
     const techItems = document.querySelectorAll('.tech-item');
     techItems.forEach(item => {
         item.addEventListener('mouseenter', function() {
             this.style.transform = 'translateY(-10px) scale(1.02)';
         });
-        
+
         item.addEventListener('mouseleave', function() {
             this.style.transform = 'translateY(0) scale(1)';
         });
     });
-    
+
     // Initialize particle background effect
     initializeParticleEffect();
 });
@@ -111,7 +154,10 @@ function initializeParticleEffect() {
         draw() {
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(0, 212, 255, ${this.opacity})`;
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+            // Warm orange particles for Claude theme
+            const color = theme === 'dark' ? '230, 152, 117' : '204, 120, 92';
+            ctx.fillStyle = `rgba(${color}, ${this.opacity})`;
             ctx.fill();
         }
     }
@@ -144,10 +190,12 @@ function initializeParticleEffect() {
                 );
                 
                 if (distance < 100) {
+                    const theme = document.documentElement.getAttribute('data-theme') || 'light';
+                    const color = theme === 'dark' ? '230, 152, 117' : '204, 120, 92';
                     ctx.beginPath();
                     ctx.moveTo(particle.x, particle.y);
                     ctx.lineTo(otherParticle.x, otherParticle.y);
-                    ctx.strokeStyle = `rgba(0, 212, 255, ${0.2 * (1 - distance / 100)})`;
+                    ctx.strokeStyle = `rgba(${color}, ${0.2 * (1 - distance / 100)})`;
                     ctx.lineWidth = 0.5;
                     ctx.stroke();
                 }

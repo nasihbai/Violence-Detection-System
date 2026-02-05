@@ -101,8 +101,8 @@ cd violence-detection
 python -m venv venv
 
 # 3. Activate virtual environment
-# Windows:
-venv\Scripts\activate
+# Windows: Terminal Git Bash
+source venv\Scripts\activate
 # Unix/Mac:
 source venv/bin/activate
 
