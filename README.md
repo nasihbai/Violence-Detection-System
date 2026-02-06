@@ -101,8 +101,8 @@ cd violence-detection
 python -m venv venv
 
 # 3. Activate virtual environment
-# Windows:
-venv\Scripts\activate
+# Windows: Terminal Git Bash
+source venv\Scripts\activate
 # Unix/Mac:
 source venv/bin/activate
 
@@ -255,13 +255,16 @@ results = response.json()
 
 ### Technology Stack
 
-- **Backend**: Flask (Python web framework)
-- **Object Detection**: YOLOv8 (Ultralytics) - Person detection
-- **ML/CV**: scikit-learn, OpenCV, NumPy
-- **Deep Learning**: PyTorch (YOLOv8 backend)
-- **Frontend**: HTML5, CSS3, JavaScript (ES6+)
-- **Video Processing**: OpenCV, PIL
-- **Data Processing**: NumPy, joblib
+| Category | Technology | Purpose |
+|----------|------------|---------|
+| **Backend** | Flask 3.0+ | Python web framework |
+| **Object Detection** | YOLOv8n (Ultralytics) | Person detection |
+| **Violence Classification** | scikit-learn (Random Forest) | ML classifier |
+| **Deep Learning** | PyTorch (CPU) | YOLOv8 backend |
+| **Computer Vision** | OpenCV (headless) | Video processing |
+| **Frontend** | HTML5, CSS3, JS (ES6+) | Web interface |
+| **Production Server** | Gunicorn | WSGI server |
+| **Image Processing** | Pillow, NumPy | Data handling |
 
 ## 🔄 Detection Architecture
 
@@ -342,7 +345,19 @@ violence-detection/
 | **Python** | 3.8 | 3.10+ |
 | **Camera** | 480p | 720p+ |
 
-> **Note**: YOLOv8 can run on CPU but performs significantly faster with GPU acceleration.
+> **Note**: YOLOv8 runs on CPU by default (for cloud deployment compatibility). GPU acceleration available locally with CUDA-enabled PyTorch.
+
+### CPU vs GPU Performance
+
+| Mode | Inference Speed | Deployment |
+|------|-----------------|------------|
+| **CPU (Default)** | ~200-500ms/frame | Cloud compatible |
+| **GPU (CUDA)** | ~20-50ms/frame | Local with NVIDIA GPU |
+
+To enable GPU locally, install CUDA PyTorch:
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+```
 
 ### Optimization Tips
 
@@ -459,6 +474,37 @@ pip install waitress
 waitress-serve --port=5000 app:app
 ```
 
+### ☁️ Cloud Deployment Options
+
+> ⚠️ **Note**: This Flask application with real-time video processing is NOT suitable for static hosting platforms like Netlify or Vercel.
+
+| Platform | Free Tier | Recommended | Notes |
+|----------|-----------|-------------|-------|
+| **[Render](https://render.com)** | ✅ Yes | ⭐ Best Choice | Easy Flask deployment |
+| **[Railway](https://railway.app)** | ✅ Yes | Good | Simple Python hosting |
+| **[PythonAnywhere](https://pythonanywhere.com)** | ✅ Yes | Good | Python-specific hosting |
+| **[Heroku](https://heroku.com)** | Limited | OK | Requires Procfile |
+| **[Fly.io](https://fly.io)** | ✅ Yes | Good | Container-based |
+| **Netlify** | ❌ | Not Suitable | Static sites only |
+| **Vercel** | ❌ | Not Suitable | Serverless only |
+
+#### Deploy to Render (Recommended)
+
+1. Create account at [render.com](https://render.com)
+2. Connect your GitHub repository
+3. Create a new **Web Service**
+4. Configure:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn app:app`
+   - **Python Version**: 3.10+
+5. Deploy!
+
+#### Environment Variables (if needed)
+```
+FLASK_ENV=production
+PYTHONUNBUFFERED=1
+```
+
 ## 📄 License
 
 This project is licensed under the **Educational Use License** - see the [LICENSE](LICENSE) file for details.
@@ -491,10 +537,28 @@ This project is licensed under the **Educational Use License** - see the [LICENS
 - Updated CSS for larger video container (720px desktop, 480px mobile)
 - Fixed JavaScript utility function loading issues
 
-**Dependencies Added:**
+**Dependencies (requirements.txt):**
 ```
+# Core Flask dependencies
+Flask>=3.0.0
+Werkzeug>=3.0.0
+gunicorn>=21.0.0
+
+# Computer Vision (headless for server deployment)
+opencv-python-headless>=4.9.0
+
+# Data processing
+numpy>=1.26.0
+Pillow>=10.0.0
+
+# Machine Learning
+scikit-learn>=1.4.0
+joblib>=1.3.0
+
+# YOLO Object Detection (CPU-only PyTorch)
 ultralytics>=8.0.0
-torch>=2.0.0
+torch (CPU version)
+torchvision (CPU version)
 ```
 
 ## 🙏 Acknowledgments
