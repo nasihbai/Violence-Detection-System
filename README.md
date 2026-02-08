@@ -81,7 +81,7 @@ Ensure you have the following installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Dharaneesh20/Violence-Detection-System.git
+git clone <your-repository-url>
 cd Violence-Detection-System
 
 # Run setup script (Windows)
@@ -572,8 +572,8 @@ torchvision (CPU version)
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/Dharaneesh20/Violence-Detection-System/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Dharaneesh20/Violence-Detection-System/discussions)
+- **Issues**: Report issues on your repository's Issues page
+- **Discussions**: Use your repository's Discussions for questions
 - **Documentation**: Check this README and inline code comments
 
 ---
