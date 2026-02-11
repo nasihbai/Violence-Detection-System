@@ -5,3 +5,6 @@
 
 #Dolphin view properties
 *.directory
+
+# Dataset (too large for git)
+violence_dataset/
