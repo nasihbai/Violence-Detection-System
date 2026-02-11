@@ -41,11 +41,11 @@ class VideoCamera:
         if frame is None:
             return None
 
-        # Perform violence detection
-        is_violent, confidence = detector.detect_violence(frame)
-
-        # Perform YOLO object detection
+        # Perform YOLO object detection FIRST (needed for person gating)
         detections = detector.detect_objects(frame)
+
+        # Perform violence detection with person count from YOLO
+        is_violent, confidence = detector.detect_violence(frame, person_count=len(detections))
 
         # Draw YOLO bounding boxes on frame
         frame = detector.draw_detections(frame, detections, is_violent, confidence)

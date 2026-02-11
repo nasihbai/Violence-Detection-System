@@ -4,6 +4,7 @@ import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 import joblib
 import warnings
 warnings.filterwarnings('ignore')
@@ -19,6 +20,13 @@ class ViolenceDetector:
         self.buffer_size = 10
         self.model_path = 'models/violence_model.pkl'
         self.scaler_path = 'models/scaler.pkl'
+
+        # Temporal smoothing: store recent confidence scores
+        self.confidence_history = []
+        self.confidence_window = 15  # Average over last 15 frames
+
+        # Motion gating: minimum motion required to even consider violence
+        self.min_motion_threshold = 2.0  # Minimum motion magnitude to trigger analysis
 
         # Initialize YOLO model for object detection
         self.yolo_model = YOLO('yolov8n.pt')  # Using YOLOv8 nano for speed
@@ -310,9 +318,9 @@ class ViolenceDetector:
         print(f"Processing violent videos from: {violent_path}")
         violent_files = self._get_video_files_recursive(violent_path)
         
-        for i, video_path in enumerate(violent_files[:50]):  # Limit to first 50 videos for speed
+        for i, video_path in enumerate(violent_files[:200]):  # Limit to first 200 videos
             video_file = os.path.basename(video_path)
-            print(f"Processing violent video {i+1}/{min(50, len(violent_files))}: {video_file}")
+            print(f"Processing violent video {i+1}/{min(200, len(violent_files))}: {video_file}")
             
             features = self._extract_video_features(video_path)
             if features is not None:
@@ -322,9 +330,9 @@ class ViolenceDetector:
         print(f"Processing non-violent videos from: {non_violent_path}")
         non_violent_files = self._get_video_files_recursive(non_violent_path)
         
-        for i, video_path in enumerate(non_violent_files[:50]):  # Limit to first 50 videos for speed
+        for i, video_path in enumerate(non_violent_files[:200]):  # Limit to first 200 videos
             video_file = os.path.basename(video_path)
-            print(f"Processing non-violent video {i+1}/{min(50, len(non_violent_files))}: {video_file}")
+            print(f"Processing non-violent video {i+1}/{min(200, len(non_violent_files))}: {video_file}")
             
             features = self._extract_video_features(video_path)
             if features is not None:
@@ -354,58 +362,58 @@ class ViolenceDetector:
         return video_files
     
     def _extract_video_features(self, video_path):
-        """Extract features from an entire video file"""
+        """Extract features from an entire video file using consecutive frames"""
         try:
             print(f"  Attempting to open: {video_path}")
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
                 print(f"  ❌ Failed to open video: {video_path}")
                 return None
-            
-            # Get video info
+
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS)
             print(f"  📹 Video info: {total_frames} frames, {fps:.1f} FPS")
-            
+
             features_list = []
-            frame_count = 0
             processed_frames = 0
-            
-            # Extract features from multiple frames (every 30th frame)
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                if frame_count % 30 == 0:  # Sample every 30th frame
-                    if frame is not None:
-                        # Clear frame buffer for each new video
-                        if frame_count == 0:
-                            self.frame_buffer = []
-                            
-                        features = self._extract_features(frame)
-                        if features is not None and len(features) == 50:
-                            features_list.append(features)
-                            processed_frames += 1
-                            print(f"    ✓ Extracted features from frame {frame_count}")
-                        else:
-                            print(f"    ❌ Failed to extract features from frame {frame_count}")
-                
-                frame_count += 1
-                
-                # Limit to 10 frames per video for speed
-                if processed_frames >= 10:
-                    break
-            
+
+            # Pick evenly spaced starting points across the video
+            num_segments = 10
+            if total_frames < num_segments * 2:
+                segment_starts = [0]
+            else:
+                segment_starts = np.linspace(0, total_frames - 2, num_segments, dtype=int)
+
+            for start_frame in segment_starts:
+                # Seek to starting position
+                cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+                # Read two CONSECUTIVE frames (mimics live detection frame gap)
+                ret1, frame1 = cap.read()
+                ret2, frame2 = cap.read()
+
+                if not ret1 or not ret2 or frame1 is None or frame2 is None:
+                    continue
+
+                # Set buffer to previous frame, then extract features from current
+                self.frame_buffer = [frame1]
+                features = self._extract_features(frame2)
+                # Update buffer after extraction (matches live detection flow)
+                self.frame_buffer = [frame2]
+
+                if features is not None and len(features) == 50:
+                    features_list.append(features)
+                    processed_frames += 1
+
             cap.release()
-            
+
             if features_list:
                 print(f"  ✅ Successfully extracted {len(features_list)} feature sets")
                 return np.array(features_list)
             else:
                 print(f"  ❌ No features extracted from video")
                 return None
-                
+
         except Exception as e:
             print(f"  ❌ Error processing video {video_path}: {e}")
             import traceback
@@ -415,35 +423,51 @@ class ViolenceDetector:
     def train_with_dataset(self, dataset_path):
         """Train model using real dataset instead of synthetic data"""
         print("Training with real dataset...")
-        
+
         # Try to load real dataset
         X, y = self._load_real_dataset(dataset_path)
-        
+
         # Fallback to synthetic data if real dataset fails
         if X is None or y is None:
             print("Falling back to synthetic training data...")
             X, y = self._generate_training_data()
-        
+
+        # Train/test split to measure real generalization accuracy
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+
         # Scale features
-        X_scaled = self.scaler.fit_transform(X)
-        
-        # Train Random Forest model
+        self.scaler.fit(X_train)
+        X_train_scaled = self.scaler.transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+
+        # Train Random Forest model with reduced complexity to prevent overfitting
         self.model = RandomForestClassifier(
-            n_estimators=200,  # More trees for real data
-            max_depth=15,      # Deeper trees for complex patterns
+            n_estimators=200,
+            max_depth=8,       # Reduced from 15 to prevent overfitting
+            min_samples_split=10,  # Require more samples to split
+            min_samples_leaf=5,    # Require more samples per leaf
             random_state=42,
             class_weight='balanced'
         )
-        
-        self.model.fit(X_scaled, y)
-        
+
+        self.model.fit(X_train_scaled, y_train)
+
         # Save model and scaler
         os.makedirs('models', exist_ok=True)
         joblib.dump(self.model, self.model_path)
         joblib.dump(self.scaler, self.scaler_path)
-        
+
+        # Report both train and test accuracy
+        train_acc = self.model.score(X_train_scaled, y_train)
+        test_acc = self.model.score(X_test_scaled, y_test)
+        print(f"\nTraining accuracy:   {train_acc:.3f}")
+        print(f"Test accuracy:       {test_acc:.3f}")
+        print(f"Train samples: {len(X_train)}, Test samples: {len(X_test)}")
+        if train_acc - test_acc > 0.15:
+            print("WARNING: Large gap between train/test — model may be overfitting")
         print("Model trained and saved successfully!")
-        print(f"Training accuracy: {self.model.score(X_scaled, y):.3f}")
         return True
     
     def _train_model(self):
@@ -474,53 +498,70 @@ class ViolenceDetector:
         print("Model trained and saved successfully!")
         print(f"Training accuracy: {self.model.score(X_scaled, y):.3f}")
     
-    def detect_violence(self, frame):
+    def _update_confidence(self, value):
+        """Update confidence history and return smoothed confidence"""
+        self.confidence_history.append(value)
+        if len(self.confidence_history) > self.confidence_window:
+            self.confidence_history.pop(0)
+        return float(np.mean(self.confidence_history))
+
+    def detect_violence(self, frame, person_count=0):
         """Detect violence in a single frame"""
         if frame is None:
             return False, 0.0
-        
-        # Add frame to buffer
+
+        # Extract features BEFORE adding frame to buffer
+        features = self._extract_features(frame)
+
+        # Add frame to buffer after extraction
         self.frame_buffer.append(frame.copy())
         if len(self.frame_buffer) > self.buffer_size:
             self.frame_buffer.pop(0)
-        
-        # Extract features
-        features = self._extract_features(frame)
+
         if features is None:
             return False, 0.0
-            
+
+        # Gate 1: Person count — violence requires at least 2 people
+        if person_count < 2:
+            return False, self._update_confidence(0.0)
+
+        # Gate 2: Motion — skip if scene is static
+        if features[0] < self.min_motion_threshold:
+            return False, self._update_confidence(0.0)
+
+        # Gate 3: Classifier prediction
         features_scaled = self.scaler.transform([features])
-        
-        # Predict
-        prediction = self.model.predict(features_scaled)[0]
-        confidence = self.model.predict_proba(features_scaled)[0][1]  # Probability of violence
-        
-        # Debug output (remove this later)
-        print(f"Raw confidence: {confidence:.3f}, Features sample: {features[:5]}")
-        
-        # Apply lower threshold for better sensitivity
-        is_violent = confidence > 0.3  # Lowered from 0.6 to 0.3
-        
-        return bool(is_violent), float(confidence)
+        raw_confidence = self.model.predict_proba(features_scaled)[0][1]
+        smoothed_confidence = self._update_confidence(raw_confidence)
+
+        # Gate 4: Majority vote — over half of recent frames must individually score high
+        high_conf_count = sum(1 for c in self.confidence_history if c > 0.7)
+        majority_ratio = high_conf_count / len(self.confidence_history)
+        is_violent = majority_ratio > 0.5
+
+        return bool(is_violent), smoothed_confidence
     
     def detect_violence_in_video(self, video_path):
         """Detect violence in an uploaded video"""
         results = []
-        
+        self.confidence_history = []  # Reset history for each video
+
         cap = cv2.VideoCapture(video_path)
         frame_count = 0
         violent_frames = 0
-        
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            
+
             frame_count += 1
-            
+
             # Skip frames for faster processing (analyze every 10th frame)
             if frame_count % 10 == 0:
-                is_violent, confidence = self.detect_violence(frame)
+                # Run YOLO person detection for person gating
+                detections = self.detect_objects(frame)
+                is_violent, confidence = self.detect_violence(frame, person_count=len(detections))
                 
                 results.append({
                     'frame': frame_count,
